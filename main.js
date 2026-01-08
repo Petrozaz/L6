@@ -1,0 +1,475 @@
+
+
+    // ------- Константы маршрутов и API -------
+    const ROUTES = {
+      USERS: '#users',
+      TODOS: '#users#todos',
+      POSTS: '#users#posts',
+      COMMENTS: '#users#posts#comments',
+    };
+    const ENDPOINTS = {
+      users: 'https://jsonplaceholder.typicode.com/users',
+      todos: 'https://jsonplaceholder.typicode.com/todos',
+      posts: 'https://jsonplaceholder.typicode.com/posts',
+      comments: 'https://jsonplaceholder.typicode.com/comments',
+    };
+
+    // ------- Ключи localStorage -------
+    const LS_KEYS = {
+      localUsers: 'spa_local_users',
+      localTodos: 'spa_local_todos', // новые/локальные todos
+    };
+
+    // ------- Утилиты localStorage -------
+    const ls = {
+      get(key, fallback = []) {
+        try {
+          const raw = localStorage.getItem(key);
+          return raw ? JSON.parse(raw) : fallback;
+        } catch {
+          return fallback;
+        }
+      },
+      set(key, value) {
+        localStorage.setItem(key, JSON.stringify(value));
+      }
+    };
+
+    // ------- Глобальное состояние -------
+    const state = {
+      hash: ROUTES.USERS,
+      search: '',
+      cache: {
+        users: null,
+        todos: null,
+        posts: null,
+        comments: null,
+      }
+    };
+
+    // ------- Инициализация -------
+    window.addEventListener('DOMContentLoaded', () => {
+      state.hash = location.hash || ROUTES.USERS;
+      initEvents();
+      render();
+    });
+    window.addEventListener('hashchange', () => {
+      state.hash = location.hash || ROUTES.USERS;
+      state.search = ''; // сбрасываем поиск при смене экрана
+      document.getElementById('searchInput').value = '';
+      render();
+    });
+
+    function initEvents() {
+      const input = document.getElementById('searchInput');
+      const clearBtn = document.getElementById('clearSearch');
+      input.addEventListener('input', (e) => {
+        state.search = e.target.value.trim();
+        renderContentOnly(); // быстрое обновление списка
+      });
+      clearBtn.addEventListener('click', () => {
+        state.search = '';
+        input.value = '';
+        renderContentOnly();
+      });
+    }
+
+    // ------- Хлебные крошки -------
+    function renderBreadcrumbs() {
+      const bc = document.getElementById('breadcrumbs');
+      const segments = state.hash.slice(1).split('#'); // remove leading '#'
+      const labelsMap = { users: 'Users', todos: 'Todos', posts: 'Posts', comments: 'Comments' };
+      const trail = [];
+      let acc = '#';
+      segments.forEach((seg, idx) => {
+        acc += (idx === 0 ? '' : '#') + seg;
+        trail.push({ label: labelsMap[seg] || seg, href: acc });
+      });
+      bc.innerHTML = '';
+      if (trail.length === 0) return;
+      trail.forEach((t, i) => {
+        const a = document.createElement('a');
+        a.href = t.href;
+        a.textContent = t.label;
+        bc.appendChild(a);
+        if (i < trail.length - 1) {
+          const sep = document.createTextNode(' / ');
+          bc.appendChild(sep);
+        }
+      });
+    }
+
+    // ------- Маршрутизация и рендер -------
+    async function render() {
+      renderBreadcrumbs();
+      document.getElementById('routeInfo').textContent = state.hash || ROUTES.USERS;
+      await ensureData(state.hash);
+      renderForms();
+      renderContent();
+    }
+
+    function renderContentOnly() {
+      renderBreadcrumbs();
+      document.getElementById('routeInfo').textContent = state.hash || ROUTES.USERS;
+      renderForms(); // формы могут зависеть от поиска (обычно нет), но оставим так
+      renderContent();
+    }
+
+    async function ensureData(hash) {
+      // Загружаем только то, что нужно для текущего экрана
+      const needs = {
+        [ROUTES.USERS]: ['users'],
+        [ROUTES.TODOS]: ['todos', 'users'], // для селекта пользователя при добавлении todo
+        [ROUTES.POSTS]: ['posts'],
+        [ROUTES.COMMENTS]: ['comments'],
+      }[hash] || ['users'];
+
+      const fetchers = {
+        users: async () => {
+          if (state.cache.users) return;
+          const res = await fetch(ENDPOINTS.users);
+          const data = await res.json();
+          state.cache.users = data;
+        },
+        todos: async () => {
+          if (state.cache.todos) return;
+          const res = await fetch(ENDPOINTS.todos);
+          const data = await res.json();
+          state.cache.todos = data;
+        },
+        posts: async () => {
+          if (state.cache.posts) return;
+          const res = await fetch(ENDPOINTS.posts);
+          const data = await res.json();
+          state.cache.posts = data;
+        },
+        comments: async () => {
+          if (state.cache.comments) return;
+          const res = await fetch(ENDPOINTS.comments);
+          const data = await res.json();
+          state.cache.comments = data;
+        },
+      };
+
+      for (const k of needs) {
+        try {
+          await fetchers[k]();
+        } catch (e) {
+          console.error('Ошибка загрузки', k, e);
+        }
+      }
+    }
+
+    // ------- Формы добавления -------
+    function renderForms() {
+      const box = document.getElementById('forms');
+      box.innerHTML = '';
+      if (state.hash === ROUTES.USERS) {
+        box.appendChild(usersForm());
+      }
+      if (state.hash === ROUTES.TODOS) {
+        box.appendChild(todosForm());
+      }
+    }
+
+    function usersForm() {
+      const wrap = document.createElement('div');
+      wrap.className = 'form';
+      wrap.innerHTML = `
+        <h4>Добавить пользователя</h4>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr;">
+          <div>
+            <label>Имя</label>
+            <input id="addUserName" type="text" placeholder="Ivan Ivanov" />
+          </div>
+          <div>
+            <label>Email</label>
+            <input id="addUserEmail" type="email" placeholder="ivan@example.com" />
+          </div>
+        </div>
+        <div class="hint">Локальные пользователи сохраняются в localStorage и отображаются вместе с данными API.</div>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <button id="addUserBtn">Добавить</button>
+        </div>
+      `;
+      wrap.querySelector('#addUserBtn').addEventListener('click', () => {
+        const name = wrap.querySelector('#addUserName').value.trim();
+        const email = wrap.querySelector('#addUserEmail').value.trim();
+        if (!name || !email) return alert('Заполните имя и email');
+        const allLocal = ls.get(LS_KEYS.localUsers, []);
+        const newId = genLocalId(allLocal);
+        const user = { id: newId, name, email, local: true };
+        allLocal.push(user);
+        ls.set(LS_KEYS.localUsers, allLocal);
+        renderContentOnly();
+        wrap.querySelector('#addUserName').value = '';
+        wrap.querySelector('#addUserEmail').value = '';
+      });
+      return wrap;
+    }
+
+    function todosForm() {
+      const wrap = document.createElement('div');
+      wrap.className = 'form';
+      const users = getAllUsers();
+      const options = users.map(u => `<option value="${u.id}">${escapeHTML(u.name)}${u.local ? ' (local)' : ''}</option>`).join('');
+      wrap.innerHTML = `
+        <h4>Добавить todo</h4>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr;">
+          <div>
+            <label>Пользователь</label>
+            <select id="todoUser">${options}</select>
+          </div>
+          <div>
+            <label>Заголовок</label>
+            <input id="todoTitle" type="text" placeholder="Сделать задачу..." />
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px;">
+          <button id="addTodoBtn">Добавить todo</button>
+        </div>
+      `;
+      wrap.querySelector('#addTodoBtn').addEventListener('click', () => {
+        const userId = parseInt(wrap.querySelector('#todoUser').value, 10);
+        const title = wrap.querySelector('#todoTitle').value.trim();
+        if (!title) return alert('Введите заголовок todo');
+        const allLocalTodos = ls.get(LS_KEYS.localTodos, []);
+        const newId = genLocalId(allLocalTodos);
+        const todo = { userId, id: newId, title, completed: false, local: true };
+        allLocalTodos.push(todo);
+        ls.set(LS_KEYS.localTodos, allLocalTodos);
+        renderContentOnly();
+        wrap.querySelector('#todoTitle').value = '';
+      });
+      return wrap;
+    }
+
+    function genLocalId(items) {
+      // Простая генерация больших ID, чтобы не конфликтовать с API (которое до ~200)
+      const base = 10000;
+      const max = items.reduce((acc, it) => Math.max(acc, it.id || base), base);
+      return max + 1;
+    }
+
+    // ------- Получение комбинированных данных (API + local) -------
+    function getAllUsers() {
+      const api = state.cache.users || [];
+      const local = ls.get(LS_KEYS.localUsers, []);
+      // помечаем local объектов
+      const localWithFlag = local.map(u => ({ ...u, local: true }));
+      return [...api, ...localWithFlag];
+    }
+    function getAllTodos() {
+      const api = state.cache.todos || [];
+      const local = ls.get(LS_KEYS.localTodos, []);
+      const localWithFlag = local.map(t => ({ ...t, local: true }));
+      return [...api, ...localWithFlag];
+    }
+
+    // ------- Рендер контента по маршруту -------
+    function renderContent() {
+      const box = document.getElementById('content');
+      box.innerHTML = '';
+
+      if (state.hash === ROUTES.USERS) {
+        const users = getAllUsers();
+        const filtered = filterUsers(users, state.search);
+        if (filtered.length === 0) {
+          box.appendChild(empty('Нет пользователей по текущему фильтру'));
+        } else {
+          box.appendChild(usersGrid(filtered));
+        }
+        return;
+      }
+
+      if (state.hash === ROUTES.TODOS) {
+        const todos = getAllTodos();
+        const filtered = filterTodos(todos, state.search);
+        if (filtered.length === 0) {
+          box.appendChild(empty('Нет todos по текущему фильтру'));
+        } else {
+          box.appendChild(todosGrid(filtered));
+        }
+        return;
+      }
+
+      if (state.hash === ROUTES.POSTS) {
+        const posts = state.cache.posts || [];
+        const filtered = filterPosts(posts, state.search);
+        if (filtered.length === 0) {
+          box.appendChild(empty('Нет постов по текущему фильтру'));
+        } else {
+          box.appendChild(postsGrid(filtered));
+        }
+        return;
+      }
+
+      if (state.hash === ROUTES.COMMENTS) {
+        const comments = state.cache.comments || [];
+        const filtered = filterComments(comments, state.search);
+        if (filtered.length === 0) {
+          box.appendChild(empty('Нет комментариев по текущему фильтру'));
+        } else {
+          box.appendChild(commentsGrid(filtered));
+        }
+        return;
+      }
+
+      // fallback
+      const info = document.createElement('div');
+      info.className = 'empty';
+      info.textContent = 'Неизвестный маршрут. Перейдите на #users.';
+      box.appendChild(info);
+    }
+
+    // ------- Компоненты списков -------
+    function usersGrid(items) {
+      const wrap = document.createElement('div');
+      wrap.className = 'grid';
+      const todosByUser = groupTodosByUser(getAllTodos());
+
+      items.forEach(user => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <h3>${escapeHTML(user.name)} ${user.local ? '<span class="pill">local</span>' : ''}</h3>
+          <p><strong>Email:</strong> ${escapeHTML(user.email || '')}</p>
+          <p><strong>User ID:</strong> ${user.id}</p>
+          <p><strong>Todos:</strong> ${(todosByUser[user.id] || []).length}</p>
+        `;
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        if (user.local) {
+          const del = document.createElement('button');
+          del.className = 'danger';
+          del.textContent = 'Удалить пользователя';
+          del.addEventListener('click', () => {
+            const localUsers = ls.get(LS_KEYS.localUsers, []);
+            const filtered = localUsers.filter(u => u.id !== user.id);
+            ls.set(LS_KEYS.localUsers, filtered);
+            // Удаляем его локальные todos
+            const localTodos = ls.get(LS_KEYS.localTodos, []);
+            const tFiltered = localTodos.filter(t => t.userId !== user.id);
+            ls.set(LS_KEYS.localTodos, tFiltered);
+            renderContentOnly();
+          });
+          actions.appendChild(del);
+        } else {
+          const disabledDel = document.createElement('button');
+          disabledDel.textContent = 'Удалить (только local)';
+          disabledDel.disabled = true;
+          actions.appendChild(disabledDel);
+        }
+        card.appendChild(actions);
+        wrap.appendChild(card);
+      });
+      return wrap;
+    }
+
+    function todosGrid(items) {
+      const wrap = document.createElement('div');
+      wrap.className = 'grid';
+      const usersIndex = indexUsersById(getAllUsers());
+      items.forEach(todo => {
+        const user = usersIndex[todo.userId];
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <h3>${escapeHTML(todo.title)} ${todo.local ? '<span class="pill">local</span>' : ''}</h3>
+          <p><strong>User:</strong> ${escapeHTML(user ? user.name : 'Unknown')} (${todo.userId})</p>
+          <p><strong>Todo ID:</strong> ${todo.id}</p>
+          <p><strong>Статус:</strong> ${todo.completed ? '✔ выполнено' : '⏳ не выполнено'}</p>
+        `;
+        wrap.appendChild(card);
+      });
+      return wrap;
+    }
+
+    function postsGrid(items) {
+      const wrap = document.createElement('div');
+      wrap.className = 'grid';
+      items.forEach(post => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <h3>${escapeHTML(post.title)}</h3>
+          <p>${escapeHTML(post.body)}</p>
+          <p class="hint">Post ID: ${post.id} • User ID: ${post.userId}</p>
+        `;
+        wrap.appendChild(card);
+      });
+      return wrap;
+    }
+
+    function commentsGrid(items) {
+      const wrap = document.createElement('div');
+      wrap.className = 'grid';
+      items.forEach(comment => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+          <h3>${escapeHTML(comment.name)}</h3>
+          <p>${escapeHTML(comment.body)}</p>
+          <p class="hint">Comment ID: ${comment.id} • Post ID: ${comment.postId} • Email: ${escapeHTML(comment.email || '')}</p>
+        `;
+        wrap.appendChild(card);
+      });
+      return wrap;
+    }
+
+    // ------- Поиск/фильтрация -------
+    function filterUsers(users, q) {
+      if (!q) return users;
+      const needle = q.toLowerCase();
+      return users.filter(u => (u.name || '').toLowerCase().includes(needle)
+        || (u.email || '').toLowerCase().includes(needle));
+    }
+    function filterTodos(todos, q) {
+      if (!q) return todos;
+      const needle = q.toLowerCase();
+      return todos.filter(t => (t.title || '').toLowerCase().includes(needle));
+    }
+    function filterPosts(posts, q) {
+      if (!q) return posts;
+      const needle = q.toLowerCase();
+      return posts.filter(p =>
+        (p.title || '').toLowerCase().includes(needle) ||
+        (p.body || '').toLowerCase().includes(needle)
+      );
+    }
+    function filterComments(comments, q) {
+      if (!q) return comments;
+      const needle = q.toLowerCase();
+      return comments.filter(c =>
+        (c.name || '').toLowerCase().includes(needle) ||
+        (c.body || '').toLowerCase().includes(needle)
+      );
+    }
+
+    // ------- Вспомогательные -------
+    function empty(text) {
+      const div = document.createElement('div');
+      div.className = 'empty';
+      div.textContent = text;
+      return div;
+    }
+    function escapeHTML(str) {
+      if (typeof str !== 'string') return String(str ?? '');
+      return str.replace(/[&<>"']/g, (m) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[m]);
+    }
+    function groupTodosByUser(todos) {
+      const map = {};
+      todos.forEach(t => {
+        if (!map[t.userId]) map[t.userId] = [];
+        map[t.userId].push(t);
+      });
+      return map;
+    }
+    function indexUsersById(users) {
+      const map = {};
+      users.forEach(u => { map[u.id] = u; });
+      return map;
+    }
+  

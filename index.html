@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="styles.css" />
+  
+  <title>SPA: Users, Todos, Posts, Comments</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+</head>
+<body>
+  <header>
+    <div class="container">
+      <nav class="nav" aria-label="Главная навигация">
+        <a href="#users">Users</a>
+        <a href="#users#todos">Todos</a>
+        <a href="#users#posts">Posts</a>
+        <a href="#users#posts#comments">Comments</a>
+      </nav>
+      <div id="breadcrumbs" class="breadcrumbs" aria-label="Хлебные крошки"></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="container">
+      <div class="controls">
+        <div class="search">
+          <input id="searchInput" type="text" placeholder="Поиск по текущей странице..." aria-label="Поиск" />
+          <button id="clearSearch" class="secondary" title="Сбросить">Очистить</button>
+        </div>
+        <div id="routeInfo" class="pill"></div>
+      </div>
+
+      <div id="forms"></div>
+      <div id="content"></div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      Demo SPA • JSONPlaceholder • hash routing • localStorage
+    </div>
+  </footer>
+<script   src="main.js"></script> 
+</body>
+</html>
